@@ -1,0 +1,55 @@
+name: Findscripter AWF network check (no AI)
+
+on:
+  push:
+    branches: [findscripter/verify-agentic-network]
+    paths: [.github/workflows/findscripter-awf-network-check.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    if: github.repository == 'findscripter/awesome-copilot-findscripter'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWF_IMAGE_TAG: '0.28.23,squid=sha256:02ffc56dd40158223064ef03a78c2d9717473c93723b4e403d455ea6f0b09ae0,agent=sha256:2c78aaba1c108e130e2d6d01e4f2cca334ea04c53e6f258913ac34173fe7e3b2,api-proxy=sha256:c15c3d1208df10c5b588a3657be53742aa982ae0909d1eb1812525268794ca64,cli-proxy=sha256:9e31a6e518eba44652b9ae94ce55c3b6958e06290c3b81b08de4174751bb439a'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned AWF
+        uses: github/gh-aw-firewall@744bd7387c4ae8a6c2d38200f6f63a781804e892 # v0.28.23
+        with:
+          version: v0.28.23
+          pull-images: 'false'
+      - name: Fetch four fixed public sources through AWF
+        shell: bash
+        run: |
+          set -euo pipefail
+          awf --version
+          printf 'Pinned images: %s\n' "$AWF_IMAGE_TAG"
+          urls=(
+            https://github.blog/changelog/label/copilot/
+            https://github.blog/ai-and-ml/github-copilot/
+            https://code.visualstudio.com/updates
+            https://nishanil.github.io/copilot-guide/
+          )
+          test "${#urls[@]}" -eq 4
+          printf 'AWF network subtest only; no AI or Copilot permission-matching test.\n\n' >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for url in "${urls[@]}"; do
+            printf 'Testing %s\n' "$url"
+            if awf --network-isolation \
+              --allow-domains github.blog,code.visualstudio.com,nishanil.github.io \
+              --image-tag "$AWF_IMAGE_TAG" \
+              -- curl -q -fsSL --max-time 30 "$url" > "$RUNNER_TEMP/awf-fetch-output.txt"; then
+              printf 'PASS %s\n' "$url" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              code=$?
+              printf 'FAIL %s (exit %s)\n' "$url" "$code" | tee -a "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+          done
+          exit "$failed"
